@@ -107,31 +107,39 @@ void setup_spiral_to_strip()
     while (i < SIZE_X * SIZE_Y) {
         for (x = xmin; x <= xmax; x++) {
           spiral_to_strip[i] = xy_to_strip(x,y);
+          printf("%d = (%d, %d)\n", i, x, y);
           if (i++ == SIZE_X * SIZE_Y) {
             return;
           }
         }
+        x--;
         ymin += 1;
         for (y = ymin; y <= ymax; y++) {
           spiral_to_strip[i] = xy_to_strip(x,y);
+          printf("%d = (%d, %d)\n", i, x, y);
           if (i++ == SIZE_X * SIZE_Y) {
             return;
           }
         }
+        y--;
         xmax -= 1;
         for (x = xmax; x >= xmin; x--) {
           spiral_to_strip[i] = xy_to_strip(x,y);
+          printf("%d = (%d, %d)\n", i, x, y);
           if (i++ == SIZE_X * SIZE_Y) {
             return;
           }
         }
+        x++;
         ymax -= 1;
         for (y = ymax; y >= ymin; y--) {
           spiral_to_strip[i] = xy_to_strip(x,y);
+          printf("%d = (%d, %d)\n", i, x, y);
           if (i++ == SIZE_X * SIZE_Y) {
             return;
           }
         }
+        y++;
         xmin += 1;
     }
 }
@@ -171,14 +179,16 @@ void app_main(void)
 
     setup_spiral_to_strip();
     
+    int i = 0;
     while (1) {
         for (int j = 0; j < EXAMPLE_LED_NUMBERS; j += 1) {
             // Build RGB pixels
             hue = (hue + 2) % 360;
             hsv2rgb(hue, 100, 30, &red, &green, &blue);
-            led_strip_pixels[j * 3 + 0] = green;
-            led_strip_pixels[j * 3 + 1] = blue;
-            led_strip_pixels[j * 3 + 2] = red;
+            i = spiral_to_strip[j];
+            led_strip_pixels[i * 3 + 0] = green;
+            led_strip_pixels[i * 3 + 1] = blue;
+            led_strip_pixels[i * 3 + 2] = red;
             // Flush RGB values to LEDs
             ESP_ERROR_CHECK(rmt_transmit(led_chan, led_encoder, led_strip_pixels, sizeof(led_strip_pixels), &tx_config));
             ESP_ERROR_CHECK(rmt_tx_wait_all_done(led_chan, portMAX_DELAY));
