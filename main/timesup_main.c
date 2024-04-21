@@ -10,16 +10,15 @@
 #include "driver/rmt_tx.h"
 #include "led_strip_encoder.h"
 
-
 #define RMT_LED_STRIP_RESOLUTION_HZ 10000000 // 10MHz resolution, 1 tick = 0.1us (led strip needs a high resolution)
 #define RMT_LED_STRIP_GPIO_NUM      2
 
-#define EXAMPLE_LED_NUMBERS         256
+#define STRIP_LENGTH         256
 #define EXAMPLE_CHASE_SPEED_MS      10
 
-static const char *TAG = "example";
+static const char *TAG = "timesup";
 
-static uint8_t led_strip_pixels[EXAMPLE_LED_NUMBERS * 3];
+static uint8_t led_strip_pixels[STRIP_LENGTH * 3];
 
 /**
  * @brief Simple helper function, converting HSV color space to RGB color space
@@ -107,7 +106,7 @@ void setup_spiral_to_strip()
     while (i < SIZE_X * SIZE_Y) {
         for (x = xmin; x <= xmax; x++) {
           spiral_to_strip[i] = xy_to_strip(x,y);
-          printf("%d = (%d, %d)\n", i, x, y);
+//          printf("%d = (%d, %d)\n", i, x, y);
           if (i++ == SIZE_X * SIZE_Y) {
             return;
           }
@@ -116,7 +115,7 @@ void setup_spiral_to_strip()
         ymin += 1;
         for (y = ymin; y <= ymax; y++) {
           spiral_to_strip[i] = xy_to_strip(x,y);
-          printf("%d = (%d, %d)\n", i, x, y);
+//          printf("%d = (%d, %d)\n", i, x, y);
           if (i++ == SIZE_X * SIZE_Y) {
             return;
           }
@@ -125,7 +124,7 @@ void setup_spiral_to_strip()
         xmax -= 1;
         for (x = xmax; x >= xmin; x--) {
           spiral_to_strip[i] = xy_to_strip(x,y);
-          printf("%d = (%d, %d)\n", i, x, y);
+//          printf("%d = (%d, %d)\n", i, x, y);
           if (i++ == SIZE_X * SIZE_Y) {
             return;
           }
@@ -134,7 +133,7 @@ void setup_spiral_to_strip()
         ymax -= 1;
         for (y = ymax; y >= ymin; y--) {
           spiral_to_strip[i] = xy_to_strip(x,y);
-          printf("%d = (%d, %d)\n", i, x, y);
+//          printf("%d = (%d, %d)\n", i, x, y);
           if (i++ == SIZE_X * SIZE_Y) {
             return;
           }
@@ -144,13 +143,121 @@ void setup_spiral_to_strip()
     }
 }
 
-void app_main(void)
+void set_index_rgb(uint32_t index, uint32_t red, uint32_t green, uint32_t blue) {
+    led_strip_pixels[index * 3 + 0] = green;
+    led_strip_pixels[index * 3 + 1] = blue;
+    led_strip_pixels[index * 3 + 2] = red;
+}
+
+void set_xy_rgb(uint32_t x, uint32_t y, uint32_t red, uint32_t green, uint32_t blue) {
+    set_index_rgb(xy_to_strip(x,y), red, green,blue);
+}
+
+const short int bitmap_blank[144] = {
+    0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0
+};
+
+const short int bitmap_left[144] = {
+    0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,1,0,0,0,0,0,0,
+    0,0,0,0,1,1,0,0,0,0,0,0,
+    0,0,0,1,1,1,0,0,0,0,0,0,
+    0,0,1,1,1,1,0,0,0,0,0,0,
+    0,1,1,1,1,1,1,1,1,1,1,1,
+    1,1,1,1,1,1,1,1,1,1,1,1,
+    0,1,1,1,1,1,1,1,1,1,1,1,
+    0,0,1,1,1,1,0,0,0,0,0,0,
+    0,0,0,1,1,1,0,0,0,0,0,0,
+    0,0,0,0,1,1,0,0,0,0,0,0,
+    0,0,0,0,0,1,0,0,0,0,0,0,
+};
+
+#define OFFSET_X (SIZE_X - 12) / 2
+#define OFFSET_Y (SIZE_Y - 12) / 2
+void draw_bitmap(const short int *bitmap, short int angle)
 {
+    if (angle == 90) {
+        ESP_LOGI(TAG, "draw bitmap 90");
+        for (int j = 0; j < 12; j++) {
+            for (int i = 0; i < 12; i++) {
+                // 90: (x,y) -> (y, -x)
+                if (bitmap[(11-i) * 12 + j] == 1) {
+                    set_xy_rgb(i + OFFSET_X, j + OFFSET_Y, 1, 1, 1);
+                }
+            }
+        }
+    }
+    else if (angle == 180) { 
+        ESP_LOGI(TAG, "draw bitmap 180");
+        for (int j = 0; j < 12; j++) {
+            for (int i = 0; i < 12; i++) {
+                // 180: (x,y) -> (-x, -y)
+                if (bitmap[(11-j) * 12 + (11 - i)] == 1) {
+                    set_xy_rgb(i + OFFSET_X, j + OFFSET_Y, 1, 1, 1);
+                }
+            }
+        }
+    }
+    else if (angle == -180) { 
+        ESP_LOGI(TAG, "draw bitmap flipped horizontal");
+        for (int j = 0; j < 12; j++) {
+            for (int i = 0; i < 12; i++) {
+                // 180: (x,y) -> (-x, -y)
+                if (bitmap[j * 12 + (11 - i)] == 1) {
+                    set_xy_rgb(i + OFFSET_X, j + OFFSET_Y, 1, 1, 1);
+                }
+            }
+        }
+    }
+    else if (angle == 270) {
+        ESP_LOGI(TAG, "draw bitmap 270");
+        for (int j = 0; j < 12; j++) {
+            for (int i = 0; i < 12; i++) {
+                // 270: (x,y) -> (-y, x)
+                if (bitmap[i * 12 + 11 - j] == 1) {
+                    set_xy_rgb(i + OFFSET_X, j + OFFSET_Y, 1, 1, 1);
+                }
+            }
+        }
+    }
+    else {
+        ESP_LOGI(TAG, "draw bitmap 0");
+        for (int j = 0; j < 12; j++) {
+            for (int i = 0; i < 12; i++) {
+                if (bitmap[j * 12 + i] == 1) {
+                    set_xy_rgb(i + OFFSET_X, j + OFFSET_Y, 1, 1, 1);
+                }
+            }
+        }
+    }
+}
+
+void draw_spiral(short int index) {
     uint32_t red = 0;
     uint32_t green = 0;
     uint32_t blue = 0;
     uint16_t hue = 0;
+    for (int i = 0; i<index; i++) {
+        // Build RGB pixels
+        hue = (hue + 2) % 360;
+        hsv2rgb(hue, 100, 1, &red, &green, &blue);
+        set_index_rgb(spiral_to_strip[i], red, green, blue);
+    }
+}
 
+void app_main(void)
+{
     ESP_LOGI(TAG, "Create RMT TX channel");
     rmt_channel_handle_t led_chan = NULL;
     rmt_tx_channel_config_t tx_chan_config = {
@@ -172,27 +279,41 @@ void app_main(void)
     ESP_LOGI(TAG, "Enable RMT TX channel");
     ESP_ERROR_CHECK(rmt_enable(led_chan));
 
-    ESP_LOGI(TAG, "Start LED rainbow chase");
     rmt_transmit_config_t tx_config = {
         .loop_count = 0, // no transfer loop
     };
 
+    ESP_LOGI(TAG, "Compute spiral to strip mapping");
     setup_spiral_to_strip();
-    
-    int i = 0;
+
+    ESP_LOGD(TAG,"SIZE_X = %d\n", SIZE_X);
+    ESP_LOGD(TAG,"SIZE_Y = %d\n", SIZE_Y);
+    ESP_LOGD(TAG,"OFFSET_X = %d\n", OFFSET_X);
+    ESP_LOGD(TAG,"OFFSET_Y = %d\n", OFFSET_Y);
+    for (int j = 0; j < 12; j++) {
+        for (int i = 0; i < 12; i++) {
+            printf("%d,", bitmap_left[j*(SIZE_X - OFFSET_X*2) + i]);
+        }
+    }
+
+    uint16_t angle = 0;
+    ESP_LOGI(TAG, "Begin main loop");
     while (1) {
-        for (int j = 0; j < EXAMPLE_LED_NUMBERS; j += 1) {
-            // Build RGB pixels
-            hue = (hue + 2) % 360;
-            hsv2rgb(hue, 100, 30, &red, &green, &blue);
-            i = spiral_to_strip[j];
-            led_strip_pixels[i * 3 + 0] = green;
-            led_strip_pixels[i * 3 + 1] = blue;
-            led_strip_pixels[i * 3 + 2] = red;
+        draw_bitmap(bitmap_left, angle);
+        for (int j = 0; j < STRIP_LENGTH; j++) {
+            draw_spiral(j);
+
             // Flush RGB values to LEDs
             ESP_ERROR_CHECK(rmt_transmit(led_chan, led_encoder, led_strip_pixels, sizeof(led_strip_pixels), &tx_config));
             ESP_ERROR_CHECK(rmt_tx_wait_all_done(led_chan, portMAX_DELAY));
             vTaskDelay(pdMS_TO_TICKS(EXAMPLE_CHASE_SPEED_MS));
         }
+        for (int j = 0; j< STRIP_LENGTH; j++) {
+            set_index_rgb(j,0,0,0);
+        }
+        // Flush RGB values to LEDs
+        ESP_ERROR_CHECK(rmt_transmit(led_chan, led_encoder, led_strip_pixels, sizeof(led_strip_pixels), &tx_config));
+        ESP_ERROR_CHECK(rmt_tx_wait_all_done(led_chan, portMAX_DELAY));
+        angle = (angle + 90) % 360;
     }
 }
