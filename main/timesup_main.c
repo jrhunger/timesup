@@ -9,6 +9,10 @@
 #include "esp_log.h"
 #include "driver/rmt_tx.h"
 #include "led_strip_encoder.h"
+// for input
+#include "driver/gpio.h"
+#include "freertos/queue.h"
+#include "esp_timer.h"
 
 #define RMT_LED_STRIP_RESOLUTION_HZ 10000000 // 10MHz resolution, 1 tick = 0.1us (led strip needs a high resolution)
 #define RMT_LED_STRIP_GPIO_NUM      2
@@ -153,19 +157,19 @@ void set_xy_rgb(uint32_t x, uint32_t y, uint32_t red, uint32_t green, uint32_t b
     set_index_rgb(xy_to_strip(x,y), red, green,blue);
 }
 
-const short int bitmap_blank[144] = {
+const short int bitmap_bang[144] = {
+    0,0,0,0,0,1,1,0,0,0,0,0,
+    0,0,0,0,1,1,1,1,0,0,0,0,
+    0,0,0,0,0,1,1,0,0,0,0,0,
     0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0
+    0,0,0,0,0,1,1,0,0,0,0,0,
+    0,0,0,0,0,1,1,0,0,0,0,0,
+    0,0,0,0,1,1,1,1,0,0,0,0,
+    0,0,0,0,1,1,1,1,0,0,0,0,
+    0,0,0,0,1,1,1,1,0,0,0,0,
+    0,0,0,0,1,1,1,1,0,0,0,0,
+    0,0,0,0,0,1,1,0,0,0,0,0,
+    0,0,0,0,0,1,1,0,0,0,0,0,
 };
 
 const short int bitmap_left[144] = {
@@ -188,7 +192,7 @@ const short int bitmap_left[144] = {
 void draw_bitmap(const short int *bitmap, short int angle)
 {
     if (angle == 90) {
-        ESP_LOGI(TAG, "draw bitmap 90");
+        //ESP_LOGI(TAG, "draw bitmap 90");
         for (int j = 0; j < 12; j++) {
             for (int i = 0; i < 12; i++) {
                 // 90: (x,y) -> (y, -x)
@@ -199,7 +203,7 @@ void draw_bitmap(const short int *bitmap, short int angle)
         }
     }
     else if (angle == 180) { 
-        ESP_LOGI(TAG, "draw bitmap 180");
+        //ESP_LOGI(TAG, "draw bitmap 180");
         for (int j = 0; j < 12; j++) {
             for (int i = 0; i < 12; i++) {
                 // 180: (x,y) -> (-x, -y)
@@ -210,7 +214,7 @@ void draw_bitmap(const short int *bitmap, short int angle)
         }
     }
     else if (angle == -180) { 
-        ESP_LOGI(TAG, "draw bitmap flipped horizontal");
+        //ESP_LOGI(TAG, "draw bitmap flipped horizontal");
         for (int j = 0; j < 12; j++) {
             for (int i = 0; i < 12; i++) {
                 // 180: (x,y) -> (-x, -y)
@@ -221,7 +225,7 @@ void draw_bitmap(const short int *bitmap, short int angle)
         }
     }
     else if (angle == 270) {
-        ESP_LOGI(TAG, "draw bitmap 270");
+        //ESP_LOGI(TAG, "draw bitmap 270");
         for (int j = 0; j < 12; j++) {
             for (int i = 0; i < 12; i++) {
                 // 270: (x,y) -> (-y, x)
@@ -232,7 +236,7 @@ void draw_bitmap(const short int *bitmap, short int angle)
         }
     }
     else {
-        ESP_LOGI(TAG, "draw bitmap 0");
+        //ESP_LOGI(TAG, "draw bitmap 0");
         for (int j = 0; j < 12; j++) {
             for (int i = 0; i < 12; i++) {
                 if (bitmap[j * 12 + i] == 1) {
@@ -243,11 +247,15 @@ void draw_bitmap(const short int *bitmap, short int angle)
     }
 }
 
-void draw_spiral(short int index) {
+void draw_spiral(uint16_t index) {
     uint32_t red = 0;
     uint32_t green = 0;
     uint32_t blue = 0;
     uint16_t hue = 0;
+    if (index >= STRIP_LENGTH) {
+        ESP_LOGI(TAG, "spiral index %d set to %d", index, STRIP_LENGTH - 1);
+        index = STRIP_LENGTH -1;
+    }
     for (int i = 0; i<index; i++) {
         // Build RGB pixels
         hue = (hue + 2) % 360;
@@ -256,8 +264,75 @@ void draw_spiral(short int index) {
     }
 }
 
+// Queue for inputs
+static QueueHandle_t gpio_evt_queue = NULL;
+
+// ISR handler needs to be short and sweet
+static void IRAM_ATTR gpio_isr_handler(void* arg) {
+    uint32_t gpio_num = (uint32_t) arg;
+    xQueueSendFromISR(gpio_evt_queue, &gpio_num, NULL);
+}
+
+static uint16_t input_enabled = 0;
+static uint16_t last_input = 99;
+// process events from queue
+static void gpio_task(void* arg) {
+    uint32_t gpio_num;
+    for (;;) {
+        if (xQueueReceive(gpio_evt_queue, &gpio_num, portMAX_DELAY)) {
+            if(input_enabled == 1) {
+                ESP_LOGI(TAG, "received %d", (int) gpio_num);
+                last_input = gpio_num;
+                input_enabled = 0;
+            }
+        }
+    }
+}
+
+
+#define GPIO_UP 3
+#define GPIO_DOWN 0
+#define GPIO_LEFT 10
+#define GPIO_RIGHT 1
 void app_main(void)
 {
+
+    ESP_LOGI(TAG, "enable GPIO inputs");
+    // 3 = up
+    gpio_pullup_en(GPIO_UP);
+    gpio_set_direction(GPIO_UP, GPIO_MODE_INPUT);
+    gpio_set_intr_type(GPIO_UP, GPIO_INTR_NEGEDGE);
+    gpio_intr_enable(GPIO_UP);
+    // 0 = down
+    gpio_pullup_en(GPIO_DOWN);
+    gpio_set_direction(GPIO_DOWN, GPIO_MODE_INPUT);
+    gpio_set_intr_type(GPIO_DOWN, GPIO_INTR_NEGEDGE);
+    gpio_intr_enable(GPIO_DOWN);
+    // 10 = left
+    gpio_pullup_en(GPIO_LEFT);
+    gpio_set_direction(GPIO_LEFT, GPIO_MODE_INPUT);
+    gpio_set_intr_type(GPIO_LEFT, GPIO_INTR_NEGEDGE);
+    gpio_intr_enable(GPIO_LEFT);
+    // 1 = right
+    gpio_pullup_en(GPIO_RIGHT);
+    gpio_set_direction(GPIO_RIGHT, GPIO_MODE_INPUT);
+    gpio_set_intr_type(GPIO_RIGHT, GPIO_INTR_NEGEDGE);
+    gpio_intr_enable(GPIO_RIGHT);
+
+    ESP_LOGI(TAG, "add GPIO isr service");
+    //create a queue to handle gpio event from isr
+    gpio_evt_queue = xQueueCreate(10, sizeof(uint32_t));
+    //start gpio task
+    xTaskCreate(gpio_task, "gpio_task", 2048, NULL, 10, NULL);
+
+    //install gpio isr service
+    gpio_install_isr_service(0); // TODO - find out what the 0 means
+    //hook isr handler for specific gpio pins
+    gpio_isr_handler_add(GPIO_UP, gpio_isr_handler, (void*) GPIO_UP);
+    gpio_isr_handler_add(GPIO_DOWN, gpio_isr_handler, (void*) GPIO_DOWN);
+    gpio_isr_handler_add(GPIO_LEFT, gpio_isr_handler, (void*) GPIO_LEFT);
+    gpio_isr_handler_add(GPIO_RIGHT, gpio_isr_handler, (void*) GPIO_RIGHT);
+
     ESP_LOGI(TAG, "Create RMT TX channel");
     rmt_channel_handle_t led_chan = NULL;
     rmt_tx_channel_config_t tx_chan_config = {
@@ -286,34 +361,104 @@ void app_main(void)
     ESP_LOGI(TAG, "Compute spiral to strip mapping");
     setup_spiral_to_strip();
 
-    ESP_LOGD(TAG,"SIZE_X = %d\n", SIZE_X);
-    ESP_LOGD(TAG,"SIZE_Y = %d\n", SIZE_Y);
-    ESP_LOGD(TAG,"OFFSET_X = %d\n", OFFSET_X);
-    ESP_LOGD(TAG,"OFFSET_Y = %d\n", OFFSET_Y);
+    // print out the left bitmap (remove later)
     for (int j = 0; j < 12; j++) {
         for (int i = 0; i < 12; i++) {
             printf("%d,", bitmap_left[j*(SIZE_X - OFFSET_X*2) + i]);
         }
     }
 
+    // start with a clear display
+    for (int j = 0; j< STRIP_LENGTH; j++) {
+        set_index_rgb(j,0,0,0);
+    }
+    // Flush RGB values to LEDs
+    ESP_ERROR_CHECK(rmt_transmit(led_chan, led_encoder, led_strip_pixels, sizeof(led_strip_pixels), &tx_config));
+    ESP_ERROR_CHECK(rmt_tx_wait_all_done(led_chan, portMAX_DELAY));
+
+    uint32_t time_limit = 5000000; // 5 seconds worth of micros
+    uint32_t elapsed_time = 0;
+    int64_t enable_start = 0;
+    int64_t delay_start = 0;
+    uint16_t glyph_displayed = 0;
     uint16_t angle = 0;
     ESP_LOGI(TAG, "Begin main loop");
+    int64_t now = 0;
     while (1) {
-        draw_bitmap(bitmap_left, angle);
-        for (int j = 0; j < STRIP_LENGTH; j++) {
-            draw_spiral(j);
-
+        now = esp_timer_get_time();
+        // counting time and total time is > limit
+        if (enable_start > 0 && now - enable_start + elapsed_time >= time_limit) {
+            ESP_LOGI(TAG, "TIME's UP!! %lld %lld", enable_start, now);
+            for (int j = 0; j< STRIP_LENGTH; j++) {
+                set_index_rgb(j,0,0,0);
+            }
+            draw_bitmap(bitmap_bang, 0);
             // Flush RGB values to LEDs
             ESP_ERROR_CHECK(rmt_transmit(led_chan, led_encoder, led_strip_pixels, sizeof(led_strip_pixels), &tx_config));
             ESP_ERROR_CHECK(rmt_tx_wait_all_done(led_chan, portMAX_DELAY));
-            vTaskDelay(pdMS_TO_TICKS(EXAMPLE_CHASE_SPEED_MS));
+            input_enabled = 0;
+            elapsed_time = 0;
+            enable_start = 0;
+            vTaskDelay(pdMS_TO_TICKS(3000)); // 5 second delay
+            glyph_displayed = 0;
+            delay_start = now;
         }
-        for (int j = 0; j< STRIP_LENGTH; j++) {
-            set_index_rgb(j,0,0,0);
+        else if (glyph_displayed == 1) {
+            if (last_input != 99) { // there is some input
+                // clear the bitmap part
+                for (int j = 0; j< STRIP_LENGTH; j++) {
+                    set_index_rgb(j,0,0,0);
+                }
+                glyph_displayed = 0;
+                if (last_input == 0) {
+                    ESP_LOGI(TAG, "CORRECT INPUT");
+                    elapsed_time += now - enable_start;
+                    enable_start = 0;
+                    draw_spiral((uint16_t) ((elapsed_time) * STRIP_LENGTH / time_limit));
+                }
+                else {
+                    ESP_LOGI(TAG, "WRONG INPUT");
+                    draw_spiral((uint16_t) ((now - enable_start + elapsed_time) * STRIP_LENGTH / time_limit));
+                }
+                delay_start = now;
+            }
+            else {
+                draw_bitmap(bitmap_left, angle);
+                draw_spiral((uint16_t) ((now - enable_start + elapsed_time) * STRIP_LENGTH / time_limit));
+            }
+        }
+        else { // glyph not displayed (and time not up)
+            if (delay_start == 0 || now - delay_start > 1000000) {
+                // set up for next one
+                angle = (angle + 90) % 360;
+                ESP_LOGI(TAG, "new angle = %d", angle);
+                last_input = 99;  // clear last input
+                for (int j = 0; j< STRIP_LENGTH; j++) {
+                   set_index_rgb(j,0,0,0);
+                }
+                if (enable_start == 0) { // start counting time if not already
+                    enable_start = now;
+                    ESP_LOGI(TAG, "start enabled %lld", now);
+                }
+                else { // time is enabled so update the spiral
+                    draw_spiral((uint16_t) ((now - enable_start + elapsed_time) * STRIP_LENGTH / time_limit));
+                }
+                glyph_displayed = 1;
+                delay_start = 0;
+                input_enabled = 1;
+            }
+            else {
+                if (enable_start == 0) {
+                    draw_spiral((uint16_t)((elapsed_time) * STRIP_LENGTH / time_limit));
+                } 
+                else {
+                    draw_spiral((uint16_t)((now - enable_start + elapsed_time) * STRIP_LENGTH / time_limit));
+                }
+            }
         }
         // Flush RGB values to LEDs
         ESP_ERROR_CHECK(rmt_transmit(led_chan, led_encoder, led_strip_pixels, sizeof(led_strip_pixels), &tx_config));
         ESP_ERROR_CHECK(rmt_tx_wait_all_done(led_chan, portMAX_DELAY));
-        angle = (angle + 90) % 360;
+        vTaskDelay(pdMS_TO_TICKS(EXAMPLE_CHASE_SPEED_MS));
     }
 }
