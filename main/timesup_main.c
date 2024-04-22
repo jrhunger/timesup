@@ -149,13 +149,28 @@ void setup_spiral_to_strip()
 
 void set_index_rgb(uint32_t index, uint32_t red, uint32_t green, uint32_t blue) {
     led_strip_pixels[index * 3 + 0] = green;
-    led_strip_pixels[index * 3 + 1] = blue;
-    led_strip_pixels[index * 3 + 2] = red;
+    led_strip_pixels[index * 3 + 1] = red;
+    led_strip_pixels[index * 3 + 2] = blue;
 }
 
 void set_xy_rgb(uint32_t x, uint32_t y, uint32_t red, uint32_t green, uint32_t blue) {
-    set_index_rgb(xy_to_strip(x,y), red, green,blue);
+    set_index_rgb(xy_to_strip(x,y), red, green, blue);
 }
+
+const short int bitmap_blank[144] = {
+    0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,
+};
 
 const short int bitmap_bang[144] = {
     0,0,0,0,0,1,1,0,0,0,0,0,
@@ -187,9 +202,39 @@ const short int bitmap_left[144] = {
     0,0,0,0,0,1,0,0,0,0,0,0,
 };
 
+const short int bitmap_check[144] = {
+    0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,1,1,0,0,0,0,0,0,0,
+    0,0,1,1,1,1,0,0,0,0,0,0,
+    0,1,1,0,1,1,1,0,0,0,0,0,
+    0,1,0,0,0,1,1,1,0,0,0,0,
+    0,0,0,0,0,0,1,1,0,0,0,0,
+    0,0,0,0,0,0,0,1,1,0,0,0,
+    0,0,0,0,0,0,0,0,1,0,0,0,
+    0,0,0,0,0,0,0,0,0,1,1,1,
+    0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,
+};
+
+const short int bitmap_x[144] = {
+    1,1,0,0,0,0,0,0,0,0,0,1,
+    0,1,1,0,0,0,0,0,0,0,1,0,
+    0,0,1,1,0,0,0,0,0,1,0,0,
+    0,0,0,1,1,0,0,0,1,0,0,0,
+    0,0,0,0,1,1,0,1,0,0,0,0,
+    0,0,0,0,0,1,1,0,0,0,0,0,
+    0,0,0,0,0,1,1,1,0,0,0,0,
+    0,0,0,0,1,0,0,1,1,0,0,0,
+    0,0,0,1,0,0,0,0,1,1,0,0,
+    0,0,1,0,0,0,0,0,0,1,1,0,
+    0,1,0,0,0,0,0,0,0,0,1,1,
+    1,0,0,0,0,0,0,0,0,0,0,1,
+};
+
 #define OFFSET_X (SIZE_X - 12) / 2
 #define OFFSET_Y (SIZE_Y - 12) / 2
-void draw_bitmap(const short int *bitmap, short int angle)
+void draw_bitmap_rgb(const short int *bitmap, short int angle, short int r, short int g, short int b)
 {
     if (angle == 90) {
         //ESP_LOGI(TAG, "draw bitmap 90");
@@ -197,7 +242,7 @@ void draw_bitmap(const short int *bitmap, short int angle)
             for (int i = 0; i < 12; i++) {
                 // 90: (x,y) -> (y, -x)
                 if (bitmap[(11-i) * 12 + j] == 1) {
-                    set_xy_rgb(i + OFFSET_X, j + OFFSET_Y, 1, 1, 1);
+                    set_xy_rgb(i + OFFSET_X, j + OFFSET_Y, r, g, b);
                 }
             }
         }
@@ -208,7 +253,7 @@ void draw_bitmap(const short int *bitmap, short int angle)
             for (int i = 0; i < 12; i++) {
                 // 180: (x,y) -> (-x, -y)
                 if (bitmap[(11-j) * 12 + (11 - i)] == 1) {
-                    set_xy_rgb(i + OFFSET_X, j + OFFSET_Y, 1, 1, 1);
+                    set_xy_rgb(i + OFFSET_X, j + OFFSET_Y, r, g, b);
                 }
             }
         }
@@ -219,7 +264,7 @@ void draw_bitmap(const short int *bitmap, short int angle)
             for (int i = 0; i < 12; i++) {
                 // 180: (x,y) -> (-x, -y)
                 if (bitmap[j * 12 + (11 - i)] == 1) {
-                    set_xy_rgb(i + OFFSET_X, j + OFFSET_Y, 1, 1, 1);
+                    set_xy_rgb(i + OFFSET_X, j + OFFSET_Y, r, g, b);
                 }
             }
         }
@@ -230,7 +275,7 @@ void draw_bitmap(const short int *bitmap, short int angle)
             for (int i = 0; i < 12; i++) {
                 // 270: (x,y) -> (-y, x)
                 if (bitmap[i * 12 + 11 - j] == 1) {
-                    set_xy_rgb(i + OFFSET_X, j + OFFSET_Y, 1, 1, 1);
+                    set_xy_rgb(i + OFFSET_X, j + OFFSET_Y, r, g, b);
                 }
             }
         }
@@ -240,11 +285,15 @@ void draw_bitmap(const short int *bitmap, short int angle)
         for (int j = 0; j < 12; j++) {
             for (int i = 0; i < 12; i++) {
                 if (bitmap[j * 12 + i] == 1) {
-                    set_xy_rgb(i + OFFSET_X, j + OFFSET_Y, 1, 1, 1);
+                    set_xy_rgb(i + OFFSET_X, j + OFFSET_Y, r, g, b);
                 }
             }
         }
     }
+}
+
+void draw_bitmap(const short int *bitmap, short int angle) {
+    draw_bitmap_rgb(bitmap, angle, 1,1,1);
 }
 
 void draw_spiral(uint16_t index) {
@@ -259,7 +308,7 @@ void draw_spiral(uint16_t index) {
     for (int i = 0; i<index; i++) {
         // Build RGB pixels
         hue = (hue + 2) % 360;
-        hsv2rgb(hue, 100, 1, &red, &green, &blue);
+        hsv2rgb(359 - hue, 100, 1, &red, &green, &blue);
         set_index_rgb(spiral_to_strip[i], red, green, blue);
     }
 }
@@ -415,10 +464,12 @@ void app_main(void)
                     elapsed_time += now - enable_start;
                     enable_start = 0;
                     draw_spiral((uint16_t) ((elapsed_time) * STRIP_LENGTH / time_limit));
+                    draw_bitmap_rgb(bitmap_check,0,0,2,0);
                 }
                 else {
                     ESP_LOGI(TAG, "WRONG INPUT");
                     draw_spiral((uint16_t) ((now - enable_start + elapsed_time) * STRIP_LENGTH / time_limit));
+                    draw_bitmap_rgb(bitmap_x,0,2,0,0);
                 }
                 delay_start = now;
             }
