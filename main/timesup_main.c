@@ -13,13 +13,23 @@
 #include "driver/gpio.h"
 #include "freertos/queue.h"
 #include "esp_timer.h"
+// to pick random direction
+#include "esp_random.h"
+// bitmaps!!!
+#include "bitmaps12x12.h"
+#include "bitmaps5x6.h"
 
+// LED output constants
+#define STRIP_LENGTH        256
+#define FRAME_DELAY_MS      10
 #define RMT_LED_STRIP_RESOLUTION_HZ 10000000 // 10MHz resolution, 1 tick = 0.1us (led strip needs a high resolution)
 #define RMT_LED_STRIP_GPIO_NUM      2
 
-#define STRIP_LENGTH         256
-#define EXAMPLE_CHASE_SPEED_MS      10
-
+// game input GPIOs
+#define GPIO_UP 3
+#define GPIO_DOWN 0
+#define GPIO_LEFT 10
+#define GPIO_RIGHT 1
 static const char *TAG = "timesup";
 
 static uint8_t led_strip_pixels[STRIP_LENGTH * 3];
@@ -157,81 +167,6 @@ void set_xy_rgb(uint32_t x, uint32_t y, uint32_t red, uint32_t green, uint32_t b
     set_index_rgb(xy_to_strip(x,y), red, green, blue);
 }
 
-const short int bitmap_blank[144] = {
-    0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,
-};
-
-const short int bitmap_bang[144] = {
-    0,0,0,0,0,1,1,0,0,0,0,0,
-    0,0,0,0,1,1,1,1,0,0,0,0,
-    0,0,0,0,0,1,1,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,1,1,0,0,0,0,0,
-    0,0,0,0,0,1,1,0,0,0,0,0,
-    0,0,0,0,1,1,1,1,0,0,0,0,
-    0,0,0,0,1,1,1,1,0,0,0,0,
-    0,0,0,0,1,1,1,1,0,0,0,0,
-    0,0,0,0,1,1,1,1,0,0,0,0,
-    0,0,0,0,0,1,1,0,0,0,0,0,
-    0,0,0,0,0,1,1,0,0,0,0,0,
-};
-
-const short int bitmap_left[144] = {
-    0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,1,0,0,0,0,0,0,
-    0,0,0,0,1,1,0,0,0,0,0,0,
-    0,0,0,1,1,1,0,0,0,0,0,0,
-    0,0,1,1,1,1,0,0,0,0,0,0,
-    0,1,1,1,1,1,1,1,1,1,1,1,
-    1,1,1,1,1,1,1,1,1,1,1,1,
-    0,1,1,1,1,1,1,1,1,1,1,1,
-    0,0,1,1,1,1,0,0,0,0,0,0,
-    0,0,0,1,1,1,0,0,0,0,0,0,
-    0,0,0,0,1,1,0,0,0,0,0,0,
-    0,0,0,0,0,1,0,0,0,0,0,0,
-};
-
-const short int bitmap_check[144] = {
-    0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,1,1,0,0,0,0,0,0,0,
-    0,0,1,1,1,1,0,0,0,0,0,0,
-    0,1,1,0,1,1,1,0,0,0,0,0,
-    0,1,0,0,0,1,1,1,0,0,0,0,
-    0,0,0,0,0,0,1,1,0,0,0,0,
-    0,0,0,0,0,0,0,1,1,0,0,0,
-    0,0,0,0,0,0,0,0,1,0,0,0,
-    0,0,0,0,0,0,0,0,0,1,1,1,
-    0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,
-};
-
-const short int bitmap_x[144] = {
-    1,1,0,0,0,0,0,0,0,0,0,1,
-    0,1,1,0,0,0,0,0,0,0,1,0,
-    0,0,1,1,0,0,0,0,0,1,0,0,
-    0,0,0,1,1,0,0,0,1,0,0,0,
-    0,0,0,0,1,1,0,1,0,0,0,0,
-    0,0,0,0,0,1,1,0,0,0,0,0,
-    0,0,0,0,0,1,1,1,0,0,0,0,
-    0,0,0,0,1,0,0,1,1,0,0,0,
-    0,0,0,1,0,0,0,0,1,1,0,0,
-    0,0,1,0,0,0,0,0,0,1,1,0,
-    0,1,0,0,0,0,0,0,0,0,1,1,
-    1,0,0,0,0,0,0,0,0,0,0,1,
-};
-
 #define OFFSET_X (SIZE_X - 12) / 2
 #define OFFSET_Y (SIZE_Y - 12) / 2
 void draw_bitmap_rgb(const short int *bitmap, short int angle, short int r, short int g, short int b)
@@ -339,10 +274,6 @@ static void gpio_task(void* arg) {
 }
 
 
-#define GPIO_UP 3
-#define GPIO_DOWN 0
-#define GPIO_LEFT 10
-#define GPIO_RIGHT 1
 void app_main(void)
 {
 
@@ -413,7 +344,7 @@ void app_main(void)
     // print out the left bitmap (remove later)
     for (int j = 0; j < 12; j++) {
         for (int i = 0; i < 12; i++) {
-            printf("%d,", bitmap_left[j*(SIZE_X - OFFSET_X*2) + i]);
+            printf("%d,", bitmap_left12x12[j*(SIZE_X - OFFSET_X*2) + i]);
         }
     }
 
@@ -431,17 +362,32 @@ void app_main(void)
     int64_t delay_start = 0;
     uint16_t glyph_displayed = 0;
     uint16_t angle = 0;
+    uint16_t game_on = 0;
+    uint16_t score = 0;
+    // enable input since using it to start game
+    input_enabled = 1;
     ESP_LOGI(TAG, "Begin main loop");
     int64_t now = 0;
     while (1) {
         now = esp_timer_get_time();
         // counting time and total time is > limit
-        if (enable_start > 0 && now - enable_start + elapsed_time >= time_limit) {
-            ESP_LOGI(TAG, "TIME's UP!! %lld %lld", enable_start, now);
+        if (game_on == 0) {
+          if (last_input == 99) {
+            vTaskDelay(pdMS_TO_TICKS(FRAME_DELAY_MS));
+          }
+          else {
+            game_on = 1;
+            last_input = 99;
+            input_enabled = 0;
+            delay_start = now;
+          }
+        }
+        else if (enable_start > 0 && now - enable_start + elapsed_time >= time_limit) {
+            ESP_LOGI(TAG, "TIME's UP!! %lld %lld, score %d", enable_start, now, score);
             for (int j = 0; j< STRIP_LENGTH; j++) {
                 set_index_rgb(j,0,0,0);
             }
-            draw_bitmap(bitmap_bang, 0);
+            draw_bitmap(bitmap_bang12x12, 0);
             // Flush RGB values to LEDs
             ESP_ERROR_CHECK(rmt_transmit(led_chan, led_encoder, led_strip_pixels, sizeof(led_strip_pixels), &tx_config));
             ESP_ERROR_CHECK(rmt_tx_wait_all_done(led_chan, portMAX_DELAY));
@@ -450,7 +396,10 @@ void app_main(void)
             enable_start = 0;
             vTaskDelay(pdMS_TO_TICKS(3000)); // 5 second delay
             glyph_displayed = 0;
-            delay_start = now;
+            game_on = 0;
+            score = 0;
+            last_input = 99;
+            input_enabled = 1;
         }
         else if (glyph_displayed == 1) {
             if (last_input != 99) { // there is some input
@@ -459,29 +408,35 @@ void app_main(void)
                     set_index_rgb(j,0,0,0);
                 }
                 glyph_displayed = 0;
-                if (last_input == 0) {
+                if ((angle == 0 && last_input == GPIO_LEFT) ||
+                    (angle == 90 && last_input == GPIO_DOWN) ||
+                    (angle == 180 && last_input == GPIO_RIGHT) ||
+                    (angle == 270 && last_input == GPIO_UP)) 
+                {
                     ESP_LOGI(TAG, "CORRECT INPUT");
+                    score++;
                     elapsed_time += now - enable_start;
                     enable_start = 0;
                     draw_spiral((uint16_t) ((elapsed_time) * STRIP_LENGTH / time_limit));
-                    draw_bitmap_rgb(bitmap_check,0,0,2,0);
+                    draw_bitmap_rgb(bitmap_check12x12,0,0,2,0);
                 }
                 else {
                     ESP_LOGI(TAG, "WRONG INPUT");
                     draw_spiral((uint16_t) ((now - enable_start + elapsed_time) * STRIP_LENGTH / time_limit));
-                    draw_bitmap_rgb(bitmap_x,0,2,0,0);
+                    draw_bitmap_rgb(bitmap_x12x12,0,2,0,0);
                 }
                 delay_start = now;
             }
             else {
-                draw_bitmap(bitmap_left, angle);
+                draw_bitmap(bitmap_left12x12, angle);
                 draw_spiral((uint16_t) ((now - enable_start + elapsed_time) * STRIP_LENGTH / time_limit));
             }
         }
         else { // glyph not displayed (and time not up)
             if (delay_start == 0 || now - delay_start > 1000000) {
                 // set up for next one
-                angle = (angle + 90) % 360;
+                //angle = (angle + 90) % 360;
+                angle = (esp_random() & 3) * 90;
                 ESP_LOGI(TAG, "new angle = %d", angle);
                 last_input = 99;  // clear last input
                 for (int j = 0; j< STRIP_LENGTH; j++) {
@@ -510,6 +465,6 @@ void app_main(void)
         // Flush RGB values to LEDs
         ESP_ERROR_CHECK(rmt_transmit(led_chan, led_encoder, led_strip_pixels, sizeof(led_strip_pixels), &tx_config));
         ESP_ERROR_CHECK(rmt_tx_wait_all_done(led_chan, portMAX_DELAY));
-        vTaskDelay(pdMS_TO_TICKS(EXAMPLE_CHASE_SPEED_MS));
+        vTaskDelay(pdMS_TO_TICKS(FRAME_DELAY_MS));
     }
 }
