@@ -16,8 +16,9 @@
 // to pick random direction
 #include "esp_random.h"
 // bitmaps!!!
-#include "bitmaps12x12.h"
-#include "bitmaps5x6.h"
+#include "bitmaps_12x12.h"
+#include "bitmaps_5x6.h"
+#include "bitmaps_4x6.h"
 
 // LED output constants
 #define STRIP_LENGTH        256
@@ -94,6 +95,8 @@ void hsv2rgb(uint32_t h, uint32_t s, uint32_t v, uint32_t *r, uint32_t *g, uint3
 #define SIZE_Y 16
 uint32_t xy_to_strip(uint32_t x, uint32_t y) 
 {
+    // flip top to bottom
+    y = SIZE_Y - 1 - y;
     // if it's an even row
     if ((x & 1) == 0) {
         return x * SIZE_Y + SIZE_Y - 1 - y;
@@ -166,6 +169,45 @@ void set_index_rgb(uint32_t index, uint32_t red, uint32_t green, uint32_t blue) 
 void set_xy_rgb(uint32_t x, uint32_t y, uint32_t red, uint32_t green, uint32_t blue) {
     set_index_rgb(xy_to_strip(x,y), red, green, blue);
 }
+
+// draw a bitmap of given size, offset by given amount. 
+void draw_bitmap_size_offset_xy_rgb(const short int *bitmap, 
+  short int size_x, short int size_y,
+  short int offset_x, short int offset_y, 
+  short int r, short int g, short int b) {
+  for (int j = 0; j < size_y; j++) {
+    for (int i = 0; i < size_x; i++) {
+      if (bitmap[j*size_x + i] == 1) {
+        set_xy_rgb(i+offset_x, j + offset_y, r, g, b);
+      }
+    }
+  } 
+}
+
+void draw_score(short int s) {
+  if (s > 99) {
+    s = 99;
+  }
+  if (s < 0) {
+    s = 0;
+  }
+  draw_bitmap_size_offset_xy_rgb(digits_5x6[s/10], 5, 6, 2, 1, 2, 2, 2);
+  draw_bitmap_size_offset_xy_rgb(digits_5x6[s%10], 5, 6, 8, 1, 2, 2, 2);
+}
+
+
+void draw_time(short int t) {
+  if (t > 999) {
+    t = 999;
+  }
+  if (t < 0) {
+    t = 0;
+  }
+  draw_bitmap_size_offset_xy_rgb(digits_4x6[t/100],    4, 6, 1, 8, 2, 0, 0);
+  draw_bitmap_size_offset_xy_rgb(digits_4x6[t%100/10], 4, 6, 6, 8, 0, 2, 0);
+  draw_bitmap_size_offset_xy_rgb(digits_4x6[t%10],     4, 6, 11, 8, 0, 0, 2);
+}
+
 
 #define OFFSET_X (SIZE_X - 12) / 2
 #define OFFSET_Y (SIZE_Y - 12) / 2
@@ -259,15 +301,17 @@ static void IRAM_ATTR gpio_isr_handler(void* arg) {
 
 static uint16_t input_enabled = 0;
 static uint16_t last_input = 99;
+static uint64_t last_input_received = 0;
 // process events from queue
 static void gpio_task(void* arg) {
     uint32_t gpio_num;
     for (;;) {
         if (xQueueReceive(gpio_evt_queue, &gpio_num, portMAX_DELAY)) {
             if(input_enabled == 1) {
-                ESP_LOGI(TAG, "received %d", (int) gpio_num);
-                last_input = gpio_num;
                 input_enabled = 0;
+                last_input_received = esp_timer_get_time();
+                ESP_LOGI(TAG, "received %d at %lld", (int) gpio_num, last_input_received);
+                last_input = gpio_num;
             }
         }
     }
@@ -356,7 +400,7 @@ void app_main(void)
     ESP_ERROR_CHECK(rmt_transmit(led_chan, led_encoder, led_strip_pixels, sizeof(led_strip_pixels), &tx_config));
     ESP_ERROR_CHECK(rmt_tx_wait_all_done(led_chan, portMAX_DELAY));
 
-    uint32_t time_limit = 5000000; // 5 seconds worth of micros
+    uint32_t time_limit = 8000000; // 8 seconds worth of micros
     uint32_t elapsed_time = 0;
     int64_t enable_start = 0;
     int64_t delay_start = 0;
@@ -364,10 +408,13 @@ void app_main(void)
     uint16_t angle = 0;
     uint16_t game_on = 0;
     uint16_t score = 0;
+    int64_t min_reaction = 999;
     // enable input since using it to start game
     input_enabled = 1;
     ESP_LOGI(TAG, "Begin main loop");
     int64_t now = 0;
+    draw_score(0);
+    draw_time(999);
     while (1) {
         now = esp_timer_get_time();
         // counting time and total time is > limit
@@ -379,6 +426,11 @@ void app_main(void)
             game_on = 1;
             last_input = 99;
             input_enabled = 0;
+            for (int j = 0; j< STRIP_LENGTH; j++) {
+                set_index_rgb(j,0,0,0);
+            }
+            ESP_ERROR_CHECK(rmt_transmit(led_chan, led_encoder, led_strip_pixels, sizeof(led_strip_pixels), &tx_config));
+            ESP_ERROR_CHECK(rmt_tx_wait_all_done(led_chan, portMAX_DELAY));
             delay_start = now;
           }
         }
@@ -387,7 +439,8 @@ void app_main(void)
             for (int j = 0; j< STRIP_LENGTH; j++) {
                 set_index_rgb(j,0,0,0);
             }
-            draw_bitmap(bitmap_bang12x12, 0);
+            draw_score(score);
+            draw_time(min_reaction);
             // Flush RGB values to LEDs
             ESP_ERROR_CHECK(rmt_transmit(led_chan, led_encoder, led_strip_pixels, sizeof(led_strip_pixels), &tx_config));
             ESP_ERROR_CHECK(rmt_tx_wait_all_done(led_chan, portMAX_DELAY));
@@ -398,6 +451,7 @@ void app_main(void)
             glyph_displayed = 0;
             game_on = 0;
             score = 0;
+            min_reaction = 999;
             last_input = 99;
             input_enabled = 1;
         }
@@ -409,13 +463,17 @@ void app_main(void)
                 }
                 glyph_displayed = 0;
                 if ((angle == 0 && last_input == GPIO_LEFT) ||
-                    (angle == 90 && last_input == GPIO_DOWN) ||
+                    (angle == 90 && last_input == GPIO_UP) ||
                     (angle == 180 && last_input == GPIO_RIGHT) ||
-                    (angle == 270 && last_input == GPIO_UP)) 
+                    (angle == 270 && last_input == GPIO_DOWN)) 
                 {
                     ESP_LOGI(TAG, "CORRECT INPUT");
                     score++;
                     elapsed_time += now - enable_start;
+                    if (min_reaction > (last_input_received - enable_start)/1000) {
+                        min_reaction = (last_input_received - enable_start)/1000;
+                    }
+                    ESP_LOGI(TAG, "reaction = %lld", last_input_received - enable_start);
                     enable_start = 0;
                     draw_spiral((uint16_t) ((elapsed_time) * STRIP_LENGTH / time_limit));
                     draw_bitmap_rgb(bitmap_check12x12,0,0,2,0);
