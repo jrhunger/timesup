@@ -19,6 +19,8 @@
 #include "bitmaps_12x12.h"
 #include "bitmaps_5x6.h"
 #include "bitmaps_4x6.h"
+// esp-now communications
+#include "espnow_comm.h"
 
 // LED output constants
 #define STRIP_LENGTH        256
@@ -317,7 +319,12 @@ static void gpio_task(void* arg) {
     }
 }
 
+void app_main(void)
+{
+    recv_comms();
+}
 
+/*
 void app_main(void)
 {
 
@@ -526,3 +533,4 @@ void app_main(void)
         vTaskDelay(pdMS_TO_TICKS(FRAME_DELAY_MS));
     }
 }
+*/

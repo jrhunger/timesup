@@ -1,2 +1,8 @@
-idf_component_register(SRCS "timesup_main.c" "led_strip_encoder.c"
-                       INCLUDE_DIRS ".")
+idf_component_register(
+    SRCS 
+        "espnow_comm.c" 
+        "led_strip_encoder.c"
+        "timesup_main.c"
+    INCLUDE_DIRS 
+        "."
+)
