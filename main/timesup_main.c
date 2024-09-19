@@ -22,19 +22,22 @@
 // esp-now communications
 #include "espnow_comm.h"
 
+// logging tag
+static const char *TAG = "timesup";
+
 // LED output constants
 #define STRIP_LENGTH        256
 #define FRAME_DELAY_MS      10
 #define RMT_LED_STRIP_RESOLUTION_HZ 10000000 // 10MHz resolution, 1 tick = 0.1us (led strip needs a high resolution)
 #define RMT_LED_STRIP_GPIO_NUM      2
 
-// game input GPIOs
+// game input GPIOs TODO abstract to interface-specific values
 #define GPIO_UP 3
 #define GPIO_DOWN 0
 #define GPIO_LEFT 10
 #define GPIO_RIGHT 1
-static const char *TAG = "timesup";
 
+// implied by constants
 static uint8_t led_strip_pixels[STRIP_LENGTH * 3];
 
 /**
@@ -292,78 +295,21 @@ void draw_spiral(uint16_t index) {
     }
 }
 
-// Queue for inputs
-static QueueHandle_t gpio_evt_queue = NULL;
-
-// ISR handler needs to be short and sweet
-static void IRAM_ATTR gpio_isr_handler(void* arg) {
-    uint32_t gpio_num = (uint32_t) arg;
-    xQueueSendFromISR(gpio_evt_queue, &gpio_num, NULL);
-}
-
 static uint16_t input_enabled = 0;
 static uint16_t last_input = 99;
 static uint64_t last_input_received = 0;
-// process events from queue
-static void gpio_task(void* arg) {
-    uint32_t gpio_num;
-    for (;;) {
-        if (xQueueReceive(gpio_evt_queue, &gpio_num, portMAX_DELAY)) {
-            if(input_enabled == 1) {
-                input_enabled = 0;
-                last_input_received = esp_timer_get_time();
-                ESP_LOGI(TAG, "received %d at %lld", (int) gpio_num, last_input_received);
-                last_input = gpio_num;
-            }
-        }
+void handle_input(int gpio_num) {
+    if(input_enabled == 1) {
+        input_enabled = 0;
+        last_input_received = esp_timer_get_time();
+        ESP_LOGI(TAG, "received %d at %lld", (int) gpio_num, last_input_received);
+        last_input = gpio_num;
     }
 }
 
 void app_main(void)
 {
-    recv_comms();
-}
-
-/*
-void app_main(void)
-{
-
-    ESP_LOGI(TAG, "enable GPIO inputs");
-    // 3 = up
-    gpio_pullup_en(GPIO_UP);
-    gpio_set_direction(GPIO_UP, GPIO_MODE_INPUT);
-    gpio_set_intr_type(GPIO_UP, GPIO_INTR_NEGEDGE);
-    gpio_intr_enable(GPIO_UP);
-    // 0 = down
-    gpio_pullup_en(GPIO_DOWN);
-    gpio_set_direction(GPIO_DOWN, GPIO_MODE_INPUT);
-    gpio_set_intr_type(GPIO_DOWN, GPIO_INTR_NEGEDGE);
-    gpio_intr_enable(GPIO_DOWN);
-    // 10 = left
-    gpio_pullup_en(GPIO_LEFT);
-    gpio_set_direction(GPIO_LEFT, GPIO_MODE_INPUT);
-    gpio_set_intr_type(GPIO_LEFT, GPIO_INTR_NEGEDGE);
-    gpio_intr_enable(GPIO_LEFT);
-    // 1 = right
-    gpio_pullup_en(GPIO_RIGHT);
-    gpio_set_direction(GPIO_RIGHT, GPIO_MODE_INPUT);
-    gpio_set_intr_type(GPIO_RIGHT, GPIO_INTR_NEGEDGE);
-    gpio_intr_enable(GPIO_RIGHT);
-
-    ESP_LOGI(TAG, "add GPIO isr service");
-    //create a queue to handle gpio event from isr
-    gpio_evt_queue = xQueueCreate(10, sizeof(uint32_t));
-    //start gpio task
-    xTaskCreate(gpio_task, "gpio_task", 2048, NULL, 10, NULL);
-
-    //install gpio isr service
-    gpio_install_isr_service(0); // TODO - find out what the 0 means
-    //hook isr handler for specific gpio pins
-    gpio_isr_handler_add(GPIO_UP, gpio_isr_handler, (void*) GPIO_UP);
-    gpio_isr_handler_add(GPIO_DOWN, gpio_isr_handler, (void*) GPIO_DOWN);
-    gpio_isr_handler_add(GPIO_LEFT, gpio_isr_handler, (void*) GPIO_LEFT);
-    gpio_isr_handler_add(GPIO_RIGHT, gpio_isr_handler, (void*) GPIO_RIGHT);
-
+    init_recv_comms(handle_input);
     ESP_LOGI(TAG, "Create RMT TX channel");
     rmt_channel_handle_t led_chan = NULL;
     rmt_tx_channel_config_t tx_chan_config = {
@@ -442,7 +388,7 @@ void app_main(void)
           }
         }
         else if (enable_start > 0 && now - enable_start + elapsed_time >= time_limit) {
-            ESP_LOGI(TAG, "TIME's UP!! %lld %lld, score %d", enable_start, now, score);
+            ESP_LOGI(TAG, "TIME's UP!! %lld %lld, score %d, best-time %lld", enable_start, now, score, min_reaction);
             for (int j = 0; j< STRIP_LENGTH; j++) {
                 set_index_rgb(j,0,0,0);
             }
@@ -533,4 +479,3 @@ void app_main(void)
         vTaskDelay(pdMS_TO_TICKS(FRAME_DELAY_MS));
     }
 }
-*/

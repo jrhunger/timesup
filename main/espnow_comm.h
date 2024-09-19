@@ -6,4 +6,8 @@
 #define MY_ESPNOW_PMK "pmk1234567890123"
 #define MY_ESPNOW_CHANNEL 1
 
-void recv_comms(void);
+typedef void(*espnow_comm_recv_cb_t)(const int data);
+
+// external functions
+void init_recv_comms(espnow_comm_recv_cb_t cb);
+

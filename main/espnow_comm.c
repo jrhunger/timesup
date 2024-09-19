@@ -14,6 +14,9 @@
 
 #include "espnow_comm.h"
 
+// prototypes for reference before definition
+static void recv_comms(const uint8_t *sender_mac_addr, const int *data);
+
 static const char *TAG = "TimesUp";
 
 static QueueHandle_t s_recv_queue;
@@ -37,8 +40,8 @@ static void queue_process_task(void *p)
         }
 
         // Refer to user function
-        //my_data_receive(recv_packet.sender_mac_addr, &recv_packet.data);
-        ESP_LOGI(TAG, "received something");
+        recv_comms(recv_packet.sender_mac_addr, &recv_packet.data);
+        //ESP_LOGI(TAG, "received something");
     }
 }
 
@@ -47,7 +50,7 @@ static void recv_cb(const esp_now_recv_info_t *recv_info, const uint8_t *data, i
     static recv_packet_t recv_packet;
     uint8_t * mac_addr = recv_info->src_addr;
 
-    ESP_LOGI(TAG, "%d bytes incoming from " MACSTR, len, MAC2STR(mac_addr));
+    //ESP_LOGI(TAG, "%d bytes incoming from " MACSTR, len, MAC2STR(mac_addr));
     
     if(len != sizeof(int))
     {
@@ -86,12 +89,19 @@ static void init_espnow_master(void)
     ESP_ERROR_CHECK( esp_now_set_pmk((const uint8_t *)MY_ESPNOW_PMK) );
 }
 
-void recv_comms(void)
+static espnow_comm_recv_cb_t receive_callback = NULL;
+void init_recv_comms(espnow_comm_recv_cb_t cb)
 {
     s_recv_queue = xQueueCreate(10, sizeof(recv_packet_t));
     assert(s_recv_queue);
     BaseType_t err = xTaskCreate(queue_process_task, "recv_task", 8192, NULL, 4, NULL);
     assert(err == pdPASS);
-    
+    receive_callback = cb;
     init_espnow_master();
+}
+
+static void recv_comms(const uint8_t *sender_mac_addr, const int *data)
+{
+    //ESP_LOGI(TAG, "Data from "MACSTR": Value - %d", MAC2STR(sender_mac_addr), *data);
+    receive_callback(*data);
 }
