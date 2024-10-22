@@ -67,7 +67,6 @@ void hsv2rgb(uint32_t h, uint32_t s, uint32_t v, uint32_t *r, uint32_t *g, uint3
     }
 }
 
-
 // map x, y to led strip #
 // Assumes serpentine starting top left going down/up/down/up...
 // x/y start from 0,0 at bottom left
@@ -83,7 +82,6 @@ uint32_t xy_to_strip(uint32_t x, uint32_t y)
         return x * SIZE_Y + y;
     }
 }
-
 
 static short int spiral_to_strip[SIZE_X * SIZE_Y];
 // setup spiral_to_strip map array. 
@@ -225,18 +223,28 @@ void draw_bitmap(const short int *bitmap, short int angle) {
     draw_bitmap_rgb(bitmap, angle, 1,1,1);
 }
 
-void draw_spiral(uint16_t index) {
+void draw_spiral(uint16_t start, uint16_t end) {
     uint32_t red = 0;
     uint32_t green = 0;
     uint32_t blue = 0;
     uint16_t hue = 0;
-    if (index >= STRIP_LENGTH) {
-        ESP_LOGI(TAG, "spiral index %d set to %d", index, STRIP_LENGTH - 1);
-        index = STRIP_LENGTH -1;
+    if (end >= STRIP_LENGTH) {
+        ESP_LOGI(TAG, "spiral end %d set to %d", end, STRIP_LENGTH - 1);
+        end = STRIP_LENGTH -1;
     }
-    for (int i = 0; i<index; i++) {
+    if (start > end) {
+        ESP_LOGI(TAG, "spiral start %d set to end %d", end, STRIP_LENGTH - 1);
+        start = end;
+    }
+    // clear up to start of spiral
+    for (int i = 0; i < start; i++) {
+        set_index_rgb(spiral_to_strip[i], 0, 0, 0);
+    }
+    // draw spiral from start to end
+    for (int i = start; i<=end; i++) {
         // Build RGB pixels
-        hue = (hue + 2) % 360;
+        //hue = (hue + 2) % 360;
+        hue = (i*360*2/STRIP_LENGTH) % 360;
         hsv2rgb(359 - hue, 100, 1, &red, &green, &blue);
         set_index_rgb(spiral_to_strip[i], red, green, blue);
     }
@@ -248,7 +256,13 @@ void grid_update_pixels() {
     ESP_ERROR_CHECK(rmt_tx_wait_all_done(led_chan, portMAX_DELAY));
 }
 
-void init_grid() {
+void grid_clear() {
+    for (int j = 0; j< STRIP_LENGTH; j++) {
+        set_index_rgb(j,0,0,0);
+    }
+}
+
+void grid_init() {
     ESP_LOGI(TAG, "Create RMT TX channel");
     rmt_tx_channel_config_t tx_chan_config = {
         .clk_src = RMT_CLK_SRC_DEFAULT, // select source clock

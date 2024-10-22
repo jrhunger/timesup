@@ -20,7 +20,8 @@ void draw_bitmap_size_offset_xy_rgb(const short int *bitmap,
   
 void set_index_rgb(uint32_t index, uint32_t red, uint32_t green, uint32_t blue);
 void grid_update_pixels();
-void draw_spiral(uint16_t index);
+void draw_spiral(uint16_t start, uint16_t end);
 void draw_bitmap_rgb(const short int *bitmap, short int angle, short int r, short int g, short int b);
 void draw_bitmap(const short int *bitmap, short int angle);
-void init_grid();
+void grid_clear();
+void grid_init();
